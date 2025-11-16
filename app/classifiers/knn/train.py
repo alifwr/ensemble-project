@@ -19,7 +19,7 @@ from app.utils.preprocessor import UNSWNB15Preprocessor
 from app.classifiers.knn.model import KNN
 
 preprocessor = UNSWNB15Preprocessor()
-model = KNN(n_neighbors=5, weights='uniform', metric='euclidean')
+model = KNN(n_neighbors=5, weights='uniform', metric='euclidean', batch_size=1000)
 
 # Define paths to data files
 data_dir = project_root / 'data'
@@ -57,6 +57,7 @@ print(f'{"="*60}')
 print(f'Number of neighbors: {model.n_neighbors}')
 print(f'Weights: {model.weights}')
 print(f'Distance metric: {model.metric}')
+print(f'Batch size: {model.batch_size}')
 print(f'\nTraining started...')
 start_time = time.time()
 model.fit(X_train_processed, y_train_encoded)
@@ -69,9 +70,12 @@ print(f'MODEL EVALUATION')
 print(f'{"="*60}')
 
 # Make predictions
+print(f'\nMaking predictions on training set...')
 y_train_pred = model.predict(X_train_processed)
 if y_test_encoded is not None:
+    print(f'Making predictions on test set (batch processing)...')
     y_test_pred = model.predict(X_test_processed)
+    print(f'Predictions complete!')
 else:
     raise ValueError("y_test_encoded is None - labels are required for evaluation")
 
@@ -146,7 +150,8 @@ with open(report_file, 'w') as f:
     f.write(f'{"="*60}\n')
     f.write(f'Number of neighbors: {model.n_neighbors}\n')
     f.write(f'Weights: {model.weights}\n')
-    f.write(f'Distance metric: {model.metric}\n\n')
+    f.write(f'Distance metric: {model.metric}\n')
+    f.write(f'Batch size: {model.batch_size}\n\n')
     
     f.write(f'{"="*60}\n')
     f.write(f'DATASET INFORMATION\n')

@@ -16,6 +16,7 @@ class KNN(BaseEstimator, ClassifierMixin):
     KNN is a non-parametric classification algorithm that:
     - Stores all training examples
     - Predicts by finding k nearest neighbors and majority voting
+    - Uses batch processing to handle large datasets efficiently
     
     Parameters:
     -----------
@@ -27,16 +28,19 @@ class KNN(BaseEstimator, ClassifierMixin):
         Distance metric: 'euclidean', 'manhattan', 'minkowski'
     p : int, default=2
         Power parameter for Minkowski metric (p=1: manhattan, p=2: euclidean)
+    batch_size : int, default=1000
+        Number of samples to process at once (prevents memory overflow)
     """
     
-    def __init__(self, n_neighbors=5, weights='uniform', metric='euclidean', p=2):
+    def __init__(self, n_neighbors=5, weights='uniform', metric='euclidean', p=2, batch_size=1000):
         self.n_neighbors = n_neighbors
         self.weights = weights
         self.metric = metric
         self.p = p
+        self.batch_size = batch_size
         
-    def _compute_distances(self, X_test):
-        """Compute distances between test samples and training samples"""
+    def _compute_distances_batch(self, X_test):
+        """Compute distances between test samples and training samples in batches"""
         if self.metric == 'euclidean':
             return euclidean_distances(X_test, self.X_train_)
         elif self.metric == 'manhattan':
@@ -92,36 +96,40 @@ class KNN(BaseEstimator, ClassifierMixin):
             Decision function values (weighted votes)
         """
         X = np.asarray(X, dtype=np.float64)
-        
-        # Compute distances to all training samples
-        distances = self._compute_distances(X)
-        
-        # Get k nearest neighbors
-        neighbor_indices, neighbor_distances = self._get_neighbors(distances)
-        
-        # Get neighbor labels
-        neighbor_labels = self.y_train_[neighbor_indices]
-        
-        # Initialize scores
         n_samples = X.shape[0]
         n_classes = len(self.classes_)
         y_scores = np.zeros((n_samples, n_classes))
         
-        # Compute weighted votes
-        for i in range(n_samples):
-            if self.weights == 'uniform':
-                # Count occurrences of each class
-                for j, cls in enumerate(self.classes_):
-                    y_scores[i, j] = np.sum(neighbor_labels[i] == cls)
-            elif self.weights == 'distance':
-                # Weight by inverse distance
-                for j, cls in enumerate(self.classes_):
-                    mask = neighbor_labels[i] == cls
-                    if np.any(mask):
-                        weights = 1.0 / (neighbor_distances[i, mask] + 1e-10)  # Add small epsilon
-                        y_scores[i, j] = np.sum(weights)
-            else:
-                raise ValueError(f"Unknown weights: {self.weights}")
+        # Process in batches to avoid memory issues
+        for start_idx in range(0, n_samples, self.batch_size):
+            end_idx = min(start_idx + self.batch_size, n_samples)
+            X_batch = X[start_idx:end_idx]
+            
+            # Compute distances to all training samples for this batch
+            distances = self._compute_distances_batch(X_batch)
+            
+            # Get k nearest neighbors
+            neighbor_indices, neighbor_distances = self._get_neighbors(distances)
+            
+            # Get neighbor labels
+            neighbor_labels = self.y_train_[neighbor_indices]
+            
+            # Compute weighted votes for this batch
+            batch_size_actual = end_idx - start_idx
+            for i in range(batch_size_actual):
+                if self.weights == 'uniform':
+                    # Count occurrences of each class
+                    for j, cls in enumerate(self.classes_):
+                        y_scores[start_idx + i, j] = np.sum(neighbor_labels[i] == cls)
+                elif self.weights == 'distance':
+                    # Weight by inverse distance
+                    for j, cls in enumerate(self.classes_):
+                        mask = neighbor_labels[i] == cls
+                        if np.any(mask):
+                            weights = 1.0 / (neighbor_distances[i, mask] + 1e-10)  # Add small epsilon
+                            y_scores[start_idx + i, j] = np.sum(weights)
+                else:
+                    raise ValueError(f"Unknown weights: {self.weights}")
         
         return y_scores
     
